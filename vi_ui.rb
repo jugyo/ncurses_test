@@ -3,81 +3,69 @@ require 'ncurses'
 require 'g'
 
 module CommandLine
-  # TODO: コマンドラインに入力された文字列をそのまま保持するように変える
+  def self.extended(base)
+    base.instance_eval do
+      @position = 0
+      @text = ''
+      @prompt = ':'
+    end
+  end
+
+  attr_reader :text, :position
 
   def char_widths
     @char_widths ||= []
     @char_widths
   end
 
-  def position
+  def clear_text
+    @text = ''
+    redraw
+  end
+
+  def cursor_position
     y = x = []
     getyx(y, x)
     x.last
   end
 
-  def move_left(i)
-    move(0, position - i)
+  def move_left(i = 1)
+    return false if @position <= @prompt.size
+    @position -= i
+    move(0, @position)
   end
 
-  def move_right(i)
-    move(y, position + i)
-  end
-
-  def position_in_str
-    x = position
-    len = 0
-    char_widths.each_with_index do |width, index|
-      len += width
-      return index if len > x
-    end
-    char_widths.size
-  end
-
-  def char_number
-    char_widths.size
-  end
-
-  def move_to_left_char(i = 1)
-    pos_in_str = position_in_str
-    return false if pos_in_str <= 1
-    x = char_widths[0..(pos_in_str - i - 1)].inject(0) { |width, sum| sum + width }
-    move(0, x)
-    return true
-  end
-
-  def move_to_right_cahr(i = 1)
-    pos_in_str = position_in_str
-    return false if pos_in_str >= char_number
-    x = char_widths[0..(pos_in_str + i - 1)].inject(0) { |width, sum| sum + width }
-    move(0, x)
-    return true
+  def move_right(i = 1)
+    return false if @position >= @text.size
+    @position += i
+    move(0, @position)
   end
 
   def add_char(char)
-    x1 = position
-    addch(char)
-    x2 = position
-    width = x2 - x1
-    char_widths.insert(position_in_str, width) if width > 0
+    text << char
+    @position += 1
+    redraw
   end
 
-  def del_char(pos_in_str = nil)
-    pos_in_str ||= position_in_str
-    width = char_widths.delete_at(pos_in_str)
-    if width
-      width.times do
-        delch
-      end
-    end
-    g char_widths
+  def del_char(pos = nil)
+    pos ||= @position
+    array = text.split(//)
+    array.delete_at(pos)
+    @text = array.join
+    redraw
   end
 
   def backspace
-    if move_to_left_char
-      pos_in_str = position_in_str
-      del_char(pos_in_str) if pos_in_str > 0
+    del_char if move_left
+  end
+
+  def redraw
+    clear
+    move(0, 0)
+    text.each_byte do |char|
+      addch(char)
     end
+    move(0, @position)
   end
 end
 
@@ -143,9 +131,9 @@ begin
         when Ncurses::KEY_DOWN
         when Ncurses::KEY_UP
         when Ncurses::KEY_RIGHT
-          command.move_to_right_cahr
+          command.move_right
         when Ncurses::KEY_LEFT
-          command.move_to_left_char
+          command.move_left
         else
           command.add_char(cch)
         end
